@@ -7,6 +7,7 @@ Web (Vue.js) — no build required
 - Use the selectors: first choose a Generation, then select a Pokémon from that generation and click "Load".
 - The page will fetch https://pokeapi.co/api/v2/generation to list generations, then https://pokeapi.co/api/v2/generation/<id> for species, and finally https://pokeapi.co/api/v2/pokemon/<pokemon_name> to render the info.
 - Works as a static file (no server needed). Uses Vue 3 via CDN and the browser Fetch API.
+  - Visualizations: Base stats radar chart (Chart.js), sprite gallery (front/back, shiny, female when available), type-colored badges, and inline audio players for cries.
 
 Optional backend (Flask)
 - You can run a tiny backend to reduce JavaScript in the frontend and avoid doing client-side mapping/ID extraction.
@@ -62,6 +63,11 @@ Web UI details
 - Pokémon selector is populated from the selected generation’s pokemon_species list and sorted alphabetically.
 - The fetch uses the species name as the last path segment of https://pokeapi.co/api/v2/pokemon/<name>.
 - Errors and loading states are shown inline in the page.
+ - Visualizations:
+   - Base stats radar chart using Chart.js.
+   - Sprites gallery with thumbnails for front/back and shiny/female variants when available.
+   - Type chips are color-coded per Pokémon type for quick recognition.
+   - Cries can be played inline with audio controls (browser autoplay policies may require user interaction).
 
 Using the backend to simplify the frontend
 - If you prefer, change the frontend fetch URLs to the local backend:

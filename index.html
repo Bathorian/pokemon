@@ -18,7 +18,7 @@
     .media { width: 160px; text-align: center; }
     .media img { width: 120px; height: 120px; image-rendering: pixelated; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #1e293b; color: #c7d2fe; font-size: 0.85rem; margin-right: 6px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #1e293b; color: #e5e7eb; font-size: 0.85rem; margin-right: 6px; border: 1px solid rgba(255,255,255,0.08); }
     .muted { color: #94a3b8; font-size: 0.95rem; }
     .error { background: #3f1d1d; color: #fecaca; border: 1px solid #7f1d1d; padding: 10px 12px; border-radius: 8px; }
     .section-title { font-weight: 700; margin-top: 12px; margin-bottom: 6px; }
@@ -33,6 +33,8 @@
     .dropdown-item:hover { background: #1f2937; }
   </style>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- Chart.js for visualizing base stats -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div id="app" class="container">
@@ -87,7 +89,7 @@
 
           <div class="section-title">Types</div>
           <div v-if="types.length">
-            <span v-for="t in types" :key="t.slot" class="pill">[{{ t.slot }}] {{ t.name }}</span>
+            <span v-for="t in types" :key="t.slot" class="pill" :style="typeStyle(t.name)">[{{ t.slot }}] {{ t.name }}</span>
           </div>
           <div v-else class="muted">n/a</div>
 
@@ -100,6 +102,9 @@
           <div class="section-title">Base stats</div>
           <div class="grid">
             <div v-for="s in stats" :key="s.name"><strong>{{ s.name }}:</strong> {{ s.value }}</div>
+          </div>
+          <div style="margin-top:8px;">
+            <canvas ref="statsCanvas" aria-label="Base stats chart" role="img" style="max-width: 520px; background:#0b1220; border:1px solid #1f2937; border-radius:8px; padding:8px;"></canvas>
           </div>
 
           <div class="section-title" v-if="pokemon.held_items && pokemon.held_items.length">Held items</div>
@@ -125,8 +130,22 @@
 
           <div class="section-title" v-if="cries.latest || cries.legacy">Cries</div>
           <div v-if="cries.latest || cries.legacy" class="grid">
-            <div v-if="cries.latest"><a :href="cries.latest" target="_blank" rel="noreferrer noopener">Latest</a></div>
-            <div v-if="cries.legacy"><a :href="cries.legacy" target="_blank" rel="noreferrer noopener">Legacy</a></div>
+            <div v-if="cries.latest">
+              <div class="muted">Latest</div>
+              <audio :src="cries.latest" controls preload="none"></audio>
+            </div>
+            <div v-if="cries.legacy">
+              <div class="muted">Legacy</div>
+              <audio :src="cries.legacy" controls preload="none"></audio>
+            </div>
+          </div>
+
+          <div class="section-title" v-if="spriteVariants.length">Sprites gallery</div>
+          <div v-if="spriteVariants.length" class="grid">
+            <div v-for="sp in spriteVariants" :key="sp.key" style="text-align:center;">
+              <img :src="sp.url" :alt="sp.label" style="width:96px;height:96px;image-rendering:pixelated;"/>
+              <div class="muted" style="margin-top:4px;">{{ sp.label }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -136,7 +155,7 @@
   </div>
 
   <script>
-    const { createApp, ref, computed, onMounted } = Vue;
+    const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
     createApp({
       setup() {
         // selectors state
@@ -167,6 +186,107 @@
           value: s.base_stat
         })));
         const cries = computed(() => pokemon.value?.cries || {});
+
+        // Sprite variants gallery
+        const spriteVariants = computed(() => {
+          const s = pokemon.value?.sprites || {};
+          if (!s) return [];
+          const mapping = [
+            ["front_default", "Front"],
+            ["back_default", "Back"],
+            ["front_shiny", "Front shiny"],
+            ["back_shiny", "Back shiny"],
+            ["front_female", "Front female"],
+            ["back_female", "Back female"],
+            ["front_shiny_female", "Front shiny female"],
+            ["back_shiny_female", "Back shiny female"],
+          ];
+          const out = [];
+          for (const [key, label] of mapping) {
+            const url = s?.[key];
+            if (url) out.push({ key, label, url });
+          }
+          return out;
+        });
+
+        // Type colors (approx. Pokemon type palette)
+        const typeColors = {
+          normal:   { bg: "#a8a77a", fg: "#0b1220" },
+          fire:     { bg: "#ee8130", fg: "#0b1220" },
+          water:    { bg: "#6390f0", fg: "#0b1220" },
+          electric: { bg: "#f7d02c", fg: "#0b1220" },
+          grass:    { bg: "#7ac74c", fg: "#0b1220" },
+          ice:      { bg: "#96d9d6", fg: "#0b1220" },
+          fighting: { bg: "#c22e28", fg: "#e5e7eb" },
+          poison:   { bg: "#a33ea1", fg: "#e5e7eb" },
+          ground:   { bg: "#e2bf65", fg: "#0b1220" },
+          flying:   { bg: "#a98ff3", fg: "#0b1220" },
+          psychic:  { bg: "#f95587", fg: "#0b1220" },
+          bug:      { bg: "#a6b91a", fg: "#0b1220" },
+          rock:     { bg: "#b6a136", fg: "#0b1220" },
+          ghost:    { bg: "#735797", fg: "#e5e7eb" },
+          dragon:   { bg: "#6f35fc", fg: "#e5e7eb" },
+          dark:     { bg: "#705746", fg: "#e5e7eb" },
+          steel:    { bg: "#b7b7ce", fg: "#0b1220" },
+          fairy:    { bg: "#d685ad", fg: "#0b1220" },
+        };
+
+        function typeStyle(typeName) {
+          const c = typeColors[(typeName || "").toLowerCase()];
+          if (!c) return {};
+          return { background: c.bg, color: c.fg, borderColor: "rgba(0,0,0,0.18)" };
+        }
+
+        // Chart.js for base stats
+        const statsCanvas = ref(null);
+        let statsChart = null;
+
+        function buildStatsDataset() {
+          const order = ["hp", "attack", "defense", "special-attack", "special-defense", "speed"];
+          const dict = Object.fromEntries((pokemon.value?.stats || []).map(s => [s.stat?.name, s.base_stat]));
+          return order.map(k => Number(dict[k] || 0));
+        }
+
+        async function renderStatsChart() {
+          await nextTick();
+          const canvas = statsCanvas.value;
+          if (!canvas) return;
+          const labels = ["HP", "Attack", "Defense", "Sp. Atk", "Sp. Def", "Speed"];
+          const data = buildStatsDataset();
+          const cfg = {
+            type: 'radar',
+            data: {
+              labels,
+              datasets: [{
+                label: 'Base stats',
+                data,
+                borderColor: '#60a5fa',
+                backgroundColor: 'rgba(96,165,250,0.2)',
+                pointBackgroundColor: '#93c5fd',
+                pointBorderColor: '#1f2937',
+              }]
+            },
+            options: {
+              responsive: true,
+              scales: {
+                r: {
+                  angleLines: { color: '#1f2937' },
+                  grid: { color: '#1f2937' },
+                  pointLabels: { color: '#e5e7eb' },
+                  ticks: { color: '#94a3b8', showLabelBackdrop: false }
+                }
+              },
+              plugins: {
+                legend: { labels: { color: '#e5e7eb' } }
+              }
+            }
+          };
+          if (statsChart) {
+            statsChart.destroy();
+            statsChart = null;
+          }
+          statsChart = new Chart(canvas, cfg);
+        }
 
         async function loadGenerations() {
           try {
@@ -242,6 +362,8 @@
             }
             const data = await resp.json();
             pokemon.value = data;
+            // Render chart after setting pokemon
+            renderStatsChart();
           } catch (e) {
             error.value = e?.message || String(e);
           } finally {
@@ -251,7 +373,12 @@
 
         onMounted(loadGenerations);
 
-        return { generations, selectedGen, species, selectedPokemon, speciesOpen, loading, error, pokemon, search, loadSpecies, toggleSpeciesList, chooseSpecies, primarySprite, types, abilities, stats, cries };
+        // Also watch pokemon and re-render chart when it changes (covers re-loads)
+        watch(pokemon, () => {
+          if (pokemon.value) renderStatsChart();
+        });
+
+        return { generations, selectedGen, species, selectedPokemon, speciesOpen, loading, error, pokemon, search, loadSpecies, toggleSpeciesList, chooseSpecies, primarySprite, types, abilities, stats, cries, spriteVariants, typeStyle, statsCanvas };
       }
     }).mount('#app');
   </script>
