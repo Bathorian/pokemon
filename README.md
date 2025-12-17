@@ -1,12 +1,44 @@
 # pokemon
 
-Simple CLI to fetch Pokémon data from the public PokeAPI.
+Simple CLI to fetch Pokémon data from the public PokeAPI, a small Vue web UI, and an optional Flask backend.
 
 Web (Vue.js) — no build required
 - Open index.html in your browser.
-- Type a Pokémon name or numeric ID into the textbox and press Enter (or click Search).
-- The page will fetch https://pokeapi.co/api/v2/pokemon/<your_input> and render the info.
+- Use the selectors: first choose a Generation, then select a Pokémon from that generation and click "Load".
+- The page will fetch https://pokeapi.co/api/v2/generation to list generations, then https://pokeapi.co/api/v2/generation/<id> for species, and finally https://pokeapi.co/api/v2/pokemon/<pokemon_name> to render the info.
 - Works as a static file (no server needed). Uses Vue 3 via CDN and the browser Fetch API.
+  - Visualizations: Base stats radar chart (Chart.js), sprite gallery (front/back, shiny, female when available), type-colored badges, and inline audio players for cries.
+  - Encounters: Shows encounter locations with per-version appearance chance and method chips (backend-first, falls back to PokeAPI). Includes a link to open the full encounters JSON.
+
+Optional backend (Flask)
+- You can run a tiny backend to reduce JavaScript in the frontend and avoid doing client-side mapping/ID extraction.
+- Start it:
+  - pip install -r requirements.txt
+  - python app.py
+- Then open http://127.0.0.1:5000/ — it serves index.html and exposes helpful JSON endpoints under /api:
+  - GET /api/generations → { results: [{ id, name, url }] }
+  - GET /api/generation/<id>/species → { results: [{ id, name, sprite }] } (sprite URL precomputed)
+  - GET /api/pokemon/<name_or_id> → passes through the PokeAPI response
+  - GET /api/pokemon/<name_or_id>/summary → returns a concise text summary (using the CLI’s summarize_pokemon)
+  - GET /api/pokemon/<name_or_id>/encounters → summarized encounter locations; add ?full=true to proxy the raw PokeAPI data
+  - GET /api/evolution-chain/<id>/paths → pre-parsed evolution branches with sprites and human-friendly condition chips
+
+SQLite logging of PokeAPI calls (backend)
+- The Flask backend now records every PokeAPI request it makes into a local SQLite database file: pokeapi_calls.sqlite3.
+- Logged fields per call: timestamp (UTC), endpoint, identifier, full URL, HTTP status, duration (ms), and the JSON payload (as text).
+- This happens automatically for all proxied endpoints and custom routes that fetch from PokeAPI (pokemon, summary, encounters, evolution chain, generations, etc.).
+- You don’t need to configure anything; the database is created on first run in the project folder.
+
+How to inspect the database
+- Using Python (example):
+  - python -c "import sqlite3; import json; conn=sqlite3.connect('pokeapi_calls.sqlite3');
+print(conn.execute('SELECT COUNT(*) FROM api_calls').fetchone());
+print(conn.execute('SELECT ts_utc, endpoint, identifier, status FROM api_calls ORDER BY id DESC LIMIT 5').fetchall())"
+- Using sqlite3 CLI (if installed):
+  - sqlite3 pokeapi_calls.sqlite3 "SELECT ts_utc, endpoint, identifier, status FROM api_calls ORDER BY id DESC LIMIT 10;"
+
+Notes on architecture
+- Originally, the Python code was a CLI tool (not a web backend). The Vue page is the frontend. The optional Flask app turns the Python side into a backend so the frontend can be thinner.
 
 What this does
 - Calls https://pokeapi.co/api/v2/pokemon/{name_or_id} (for example: pikachu)
@@ -19,7 +51,7 @@ What this does
   - forms and held items
 - Optionally prints raw JSON
 
-Quick start
+CLI quick start
 1. Ensure you have Python 3.9+ installed.
 2. Install dependencies:
    - pip install -r requirements.txt
@@ -42,3 +74,28 @@ Notes
 
 Tip
 - For the web page, you can also serve it locally (optional) using a simple static server if your browser blocks local file audio for cries links. For example, with Python: python -m http.server 8000 and then open http://localhost:8000/index.html
+
+Web UI details
+- Generation selector loads from https://pokeapi.co/api/v2/generation?limit=100.
+- Pokémon selector is populated from the selected generation’s pokemon_species list and sorted alphabetically.
+- The fetch uses the species name as the last path segment of https://pokeapi.co/api/v2/pokemon/<name>.
+- Errors and loading states are shown inline in the page.
+ - Visualizations:
+   - Base stats radar chart using Chart.js.
+   - Sprites gallery with thumbnails for front/back and shiny/female variants when available.
+   - Type chips are color-coded per Pokémon type for quick recognition.
+   - Cries can be played inline with audio controls (browser autoplay policies may require user interaction).
+   - Species details section: After loading a Pokémon, the page also fetches its Pokémon-species data and shows flavor text, egg groups, growth rate, capture rate, base happiness, generation, color/shape/habitat, gender differences flags, hatch counter, whether it’s baby/legendary/mythical, evolution-chain link, and varieties.
+   - Evolution chain visualization: After species details load, the app fetches the evolution-chain and renders each branch path with inline sprites and small condition chips (e.g., "Lv 16", "item: fire-stone"). It tries the local backend at /api/evolution-chain/<id> first and falls back to the PokeAPI chain URL from species data.
+   - Encounter locations: After loading a Pokémon, the app fetches its encounters (tries /api/pokemon/<name>/encounters first, falls back to the PokeAPI location_area_encounters URL). It lists each location area with per-version max chance and method chips, plus a link to the full JSON.
+
+Using the backend to simplify the frontend
+- The frontend now prefers the local backend and falls back to PokeAPI if the backend isn't running. Endpoints used:
+  - Generations: /api/generations
+  - Species: /api/generation/<id>/species (already includes sprite URLs and normalized ids)
+  - Pokémon: /api/pokemon/<name>
+  - Pokémon species (summarized): /api/pokemon-species/<name_or_id>
+  - Pokémon encounters (summarized): /api/pokemon/<name>/encounters (append ?full=true for raw pass-through)
+  - Optional text summary: /api/pokemon/<name>/summary
+  - Evolution chain (pre-parsed paths): /api/evolution-chain/<id>/paths (frontend will try this first, then fall back)
+- This removes the need for client-side regex/id extraction and sprite URL construction.
