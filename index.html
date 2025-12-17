@@ -124,8 +124,38 @@
           </div>
 
           <div class="section-title" v-if="pokemon.location_area_encounters">Encounters</div>
-          <div v-if="pokemon.location_area_encounters" class="muted">
-            <a :href="pokemon.location_area_encounters" target="_blank" rel="noreferrer noopener">View encounter locations</a>
+          <div v-if="pokemon.location_area_encounters">
+            <div v-if="encountersLoading" class="muted">Loading encounter locations…</div>
+            <div v-else-if="encountersError" class="error" role="alert">{{ encountersError }}</div>
+            <template v-else>
+              <div v-if="encounters && encounters.locations && encounters.locations.length">
+                <div class="muted" style="margin-bottom:6px;">Found {{ encounters.total_locations }} location<span v-if="encounters.total_locations !== 1">s</span>.</div>
+                <div class="grid" style="grid-template-columns: 1fr; gap: 10px;">
+                  <div v-for="loc in encounters.locations" :key="loc.location" class="card" style="padding:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                      <div style="font-weight:700; text-transform: capitalize;">{{ prettify(loc.location) }}</div>
+                      <a class="muted" :href="`https://pokeapi.co/api/v2/location-area/${loc.location}`" target="_blank" rel="noreferrer noopener">Open API</a>
+                    </div>
+                    <div v-if="loc.versions && loc.versions.length" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                      <div v-for="v in loc.versions" :key="v.version" class="pill" title="Max chance">
+                        {{ v.version }} — {{ v.max_chance }}%
+                      </div>
+                    </div>
+                    <div v-if="loc.versions && loc.versions.length" class="muted" style="margin-top:6px;">
+                      <template v-for="v in loc.versions" :key="v.version + '-methods'">
+                        <div style="margin-top:4px;">
+                          <strong style="text-transform: capitalize;">{{ v.version }} methods:</strong>
+                          <span v-for="m in (v.methods || [])" :key="v.version + m" class="pill" style="margin-left:6px; text-transform: capitalize;">{{ m }}</span>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-top:6px;">
+                <a class="muted" :href="encounters && encounters.full_url ? encounters.full_url : pokemon.location_area_encounters" target="_blank" rel="noreferrer noopener">Open full encounters JSON</a>
+              </div>
+            </template>
           </div>
 
           <div class="section-title" v-if="cries.latest || cries.legacy">Cries</div>
@@ -145,6 +175,74 @@
             <div v-for="sp in spriteVariants" :key="sp.key" style="text-align:center;">
               <img :src="sp.url" :alt="sp.label" style="width:96px;height:96px;image-rendering:pixelated;"/>
               <div class="muted" style="margin-top:4px;">{{ sp.label }}</div>
+            </div>
+          </div>
+
+          <!-- Species details (from pokemon-species) -->
+          <div class="section-title" v-if="speciesDetails">Species details</div>
+          <div v-if="speciesDetails" class="grid">
+            <div v-if="englishGenus(speciesDetails.genera)"><strong>Category:</strong> {{ englishGenus(speciesDetails.genera) }}</div>
+            <div v-if="speciesDetails.generation"><strong>Generation:</strong> {{ prettify(speciesDetails.generation.name || speciesDetails.generation) }}</div>
+            <div v-if="speciesDetails.color"><strong>Color:</strong> {{ prettify(speciesDetails.color.name || speciesDetails.color) }}</div>
+            <div v-if="speciesDetails.shape"><strong>Shape:</strong> {{ prettify(speciesDetails.shape.name || speciesDetails.shape) }}</div>
+            <div v-if="speciesDetails.habitat"><strong>Habitat:</strong> {{ prettify(speciesDetails.habitat.name || speciesDetails.habitat) }}</div>
+            <div v-if="speciesDetails.growth_rate"><strong>Growth rate:</strong> {{ prettify(speciesDetails.growth_rate.name || speciesDetails.growth_rate) }}</div>
+            <div v-if="speciesDetails.egg_groups && speciesDetails.egg_groups.length"><strong>Egg groups:</strong> {{ speciesDetails.egg_groups.map(e => prettify(e.name || e)).join(', ') }}</div>
+            <div v-if="speciesDetails.capture_rate != null"><strong>Capture rate:</strong> {{ speciesDetails.capture_rate }} <span class="muted">(~{{ captureRateApprox(speciesDetails.capture_rate) }}% with a Poké Ball at full HP)</span></div>
+            <div v-if="speciesDetails.base_happiness != null"><strong>Base happiness:</strong> {{ speciesDetails.base_happiness }}</div>
+            <div v-if="speciesDetails.gender_rate != null"><strong>Gender rate:</strong> {{ speciesDetails.gender_rate }}</div>
+            <div v-if="speciesDetails.hatch_counter != null"><strong>Hatch counter:</strong> {{ speciesDetails.hatch_counter }}</div>
+            <div v-if="speciesDetails.has_gender_differences != null"><strong>Gender differences:</strong> {{ speciesDetails.has_gender_differences }}</div>
+            <div v-if="speciesDetails.forms_switchable != null"><strong>Forms switchable:</strong> {{ speciesDetails.forms_switchable }}</div>
+            <div v-if="speciesDetails.is_baby != null"><strong>Baby:</strong> {{ speciesDetails.is_baby }}</div>
+            <div v-if="speciesDetails.is_legendary != null"><strong>Legendary:</strong> {{ speciesDetails.is_legendary }}</div>
+            <div v-if="speciesDetails.is_mythical != null"><strong>Mythical:</strong> {{ speciesDetails.is_mythical }}</div>
+            <div v-if="speciesDetails.evolves_from_species"><strong>Evolves from:</strong> {{ prettify(speciesDetails.evolves_from_species.name || speciesDetails.evolves_from_species) }}</div>
+          </div>
+
+          <div v-if="speciesDetails && speciesDetails.flavor_text" style="margin-top:8px;">
+            <div class="section-title">Flavor text</div>
+            <div class="muted" style="white-space: pre-line;">{{ speciesDetails.flavor_text }}</div>
+          </div>
+
+          <div v-if="speciesDetails && speciesDetails.evolution_chain && speciesDetails.evolution_chain.url" style="margin-top:8px;">
+            <div class="section-title">Evolution chain</div>
+            <!-- Visual graph -->
+            <div v-if="evoLoading" class="muted">Loading evolution chain…</div>
+            <div v-else-if="evoError" class="error" role="alert">{{ evoError }}</div>
+            <div v-else-if="evoPaths.length" class="grid" style="grid-template-columns: 1fr; gap: 10px;">
+              <!-- Render each path (branch) as a row -->
+              <div v-for="(p, idx) in evoPaths" :key="idx" class="card" style="padding:10px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                  <template v-for="(step, i) in p.steps" :key="step.key">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <div style="text-align:center; min-width:110px;">
+                        <img :src="step.sprite" :alt="step.name + ' sprite'" style="width:72px; height:72px; image-rendering: pixelated; display:block; margin:0 auto;" />
+                        <div style="text-transform: capitalize; font-weight:600;">{{ step.name }}</div>
+                      </div>
+                      <template v-if="i < p.steps.length - 1">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                          <span class="pill" v-for="cond in p.links[i].conditions" :key="cond">{{ cond }}</span>
+                          <span class="muted" aria-hidden="true" style="font-size:1.2rem;">→</span>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+            <!-- Fallback link -->
+            <div style="margin-top:6px;">
+              <a class="muted" :href="speciesDetails.evolution_chain.url" target="_blank" rel="noreferrer noopener">Open evolution chain API</a>
+            </div>
+          </div>
+
+          <div v-if="speciesDetails && speciesDetails.varieties && speciesDetails.varieties.length" style="margin-top:8px;">
+            <div class="section-title">Varieties</div>
+            <div>
+              <span v-for="v in speciesDetails.varieties" :key="(v.pokemon?.name || v.name)" class="pill" style="text-transform: capitalize;">
+                {{ (v.pokemon?.name || v.name) }}
+              </span>
             </div>
           </div>
         </div>
@@ -168,10 +266,22 @@
         const loading = ref(false);
         const error = ref("");
         const pokemon = ref(null);
+        const speciesDetails = ref(null);
+        // Evolution chain state
+        const evoLoading = ref(false);
+        const evoError = ref("");
+        // Each path: { steps: [{ key, name, id, sprite }], links: [{ conditions: ["..."] }] }
+        const evoPaths = ref([]);
+        // Encounters
+        const encountersLoading = ref(false);
+        const encountersError = ref("");
+        const encounters = ref(null);
 
-        const API_BASE = "https://pokeapi.co/api/v2/pokemon/";
-        const GENERATION_LIST = "https://pokeapi.co/api/v2/generation?limit=100";
-        const GENERATION_DETAIL = (id) => `https://pokeapi.co/api/v2/generation/${id}`;
+        // Prefer local backend to reduce frontend logic; fall back to PokeAPI if backend is unavailable
+        const API_BASE = "/api/pokemon/"; // backend proxy; fallback handled per-request
+        const GENERATION_LIST = "/api/generation";
+        const GENERATION_DETAIL = (id) => `/api/generation/${id}/species`;
+        const SPRITE_BASE = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon"; // used only for fallback cases
 
         const primarySprite = computed(() => pokemon.value?.sprites?.front_default || "");
         const types = computed(() => (pokemon.value?.types || []).map(t => ({ slot: t.slot, name: t.type?.name })));
@@ -291,13 +401,26 @@
         async function loadGenerations() {
           try {
             error.value = "";
-            const resp = await fetch(GENERATION_LIST);
-            const data = await resp.json();
-            const gens = (data.results || []).map((r) => {
-              const m = (r.url || "").match(/\/(\d+)\/?$/);
-              const id = m ? Number(m[1]) : r.name;
-              return { id, name: r.name, url: r.url };
-            }).sort((a,b) => (a.id > b.id ? 1 : -1));
+            // Try backend first
+            let data = null;
+            try {
+              const resp = await fetch(GENERATION_LIST);
+              if (resp.ok) data = await resp.json();
+            } catch (_) { /* ignore */ }
+            if (!data) {
+              // Fallback to PokeAPI directly
+              const resp = await fetch("https://pokeapi.co/api/v2/generation?limit=100");
+              if (!resp.ok) throw new Error(`Failed to load generations (${resp.status})`);
+              const raw = await resp.json();
+              const gens = (raw.results || []).map((r) => {
+                const m = (r.url || "").match(/\/(\d+)\/?$/);
+                const id = m ? Number(m[1]) : r.name;
+                return { id, name: r.name, url: r.url };
+              }).sort((a,b) => (a.id > b.id ? 1 : -1));
+              generations.value = gens;
+              return;
+            }
+            const gens = (data.results || []).sort((a,b) => (a.id > b.id ? 1 : -1));
             generations.value = gens;
           } catch (e) {
             error.value = e?.message || String(e);
@@ -309,21 +432,33 @@
           selectedPokemon.value = null;
           speciesOpen.value = false;
           pokemon.value = null;
+          speciesDetails.value = null;
           if (!selectedGen.value) return;
           loading.value = true;
           error.value = "";
           try {
-            const resp = await fetch(GENERATION_DETAIL(selectedGen.value));
-            if (!resp.ok) throw new Error(`Failed to load generation ${selectedGen.value} (${resp.status})`);
-            const data = await resp.json();
-            const list = (data.pokemon_species || [])
+            // Try backend enhanced list first
+            let data = null;
+            try {
+              const resp = await fetch(GENERATION_DETAIL(selectedGen.value));
+              if (resp.ok) data = await resp.json();
+            } catch (_) { /* ignore */ }
+
+            if (data && Array.isArray(data.results)) {
+              species.value = data.results;
+              return;
+            }
+
+            // Fallback to PokeAPI generation details and build the list client-side
+            const resp2 = await fetch(`https://pokeapi.co/api/v2/generation/${selectedGen.value}`);
+            if (!resp2.ok) throw new Error(`Failed to load generation ${selectedGen.value} (${resp2.status})`);
+            const raw = await resp2.json();
+            const list = (raw.pokemon_species || [])
               .map(s => {
                 const name = s.name;
-                // Extract numeric id from species URL
                 const m = (s.url || "").match(/\/(\d+)\/?$/);
                 const id = m ? Number(m[1]) : null;
-                // Build sprite URL using the numeric id when available
-                const sprite = id ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png` : "";
+                const sprite = id ? `${SPRITE_BASE}/${id}.png` : "";
                 return { id: id ?? name, name, sprite };
               })
               .filter(item => !!item.name)
@@ -349,6 +484,13 @@
         async function search() {
           error.value = "";
           pokemon.value = null;
+          speciesDetails.value = null;
+          evoPaths.value = [];
+          evoError.value = "";
+          evoLoading.value = false;
+          encounters.value = null;
+          encountersError.value = "";
+          encountersLoading.value = false;
           const q = (selectedPokemon.value?.name || "").trim().toLowerCase();
           if (!q) {
             error.value = "Please select a Pokémon.";
@@ -356,18 +498,259 @@
           }
           loading.value = true;
           try {
-            const resp = await fetch(API_BASE + encodeURIComponent(q));
-            if (resp.status === 404) {
-              throw new Error(`Pokémon "${q}" not found (404).`);
+            // Try backend first
+            let data = null;
+            try {
+              const resp = await fetch(API_BASE + encodeURIComponent(q));
+              if (resp.ok) data = await resp.json();
+            } catch (_) { /* ignore */ }
+            if (!data) {
+              const resp2 = await fetch("https://pokeapi.co/api/v2/pokemon/" + encodeURIComponent(q));
+              if (resp2.status === 404) throw new Error(`Pokémon "${q}" not found (404).`);
+              if (!resp2.ok) throw new Error(`Failed to load Pokémon (${resp2.status})`);
+              data = await resp2.json();
             }
-            const data = await resp.json();
             pokemon.value = data;
             // Render chart after setting pokemon
             renderStatsChart();
+            // Load species details (from backend if available, or directly from PokeAPI)
+            await loadSpeciesDetails(q, data);
+            // After species details, load and visualize evolution chain
+            await loadEvolutionChain();
+            // Load encounter locations (backend-first, then PokeAPI fallback)
+            await loadEncounters(q, data);
           } catch (e) {
             error.value = e?.message || String(e);
           } finally {
             loading.value = false;
+          }
+        }
+
+        function latestEnglishFlavor(entries) {
+          if (!Array.isArray(entries)) return "";
+          // filter english entries, take the last one to approximate latest
+          const en = entries.filter(e => (e.language?.name || e.language) === 'en');
+          if (!en.length) return "";
+          // normalize whitespace/newlines
+          const txt = (en[en.length - 1].flavor_text || "").replace(/\s+/g, ' ').replace(/\u000c/g, ' ').trim();
+          return txt;
+        }
+
+        async function loadSpeciesDetails(identifier, pokeData) {
+          try {
+            try {
+              const resp = await fetch(`/api/pokemon-species/${encodeURIComponent(identifier)}`);
+              if (resp.ok) {
+                const s = await resp.json();
+                // Expect already summarized shape from backend
+                speciesDetails.value = s;
+                return;
+              }
+            } catch (_) {
+              // ignore and fallback
+            }
+
+            // Fallback: fetch species directly from PokeAPI using the URL in pokemon data
+            const url = pokeData?.species?.url;
+            if (!url) return;
+            const sResp = await fetch(url);
+            if (!sResp.ok) return;
+            const raw = await sResp.json();
+            // Build a lightweight summary to match backend keys
+            speciesDetails.value = {
+              id: raw.id,
+              name: raw.name,
+              order: raw.order,
+              gender_rate: raw.gender_rate,
+              capture_rate: raw.capture_rate,
+              base_happiness: raw.base_happiness,
+              is_baby: raw.is_baby,
+              is_legendary: raw.is_legendary,
+              is_mythical: raw.is_mythical,
+              hatch_counter: raw.hatch_counter,
+              has_gender_differences: raw.has_gender_differences,
+              forms_switchable: raw.forms_switchable,
+              growth_rate: raw.growth_rate,
+              egg_groups: raw.egg_groups,
+              color: raw.color,
+              shape: raw.shape,
+              evolves_from_species: raw.evolves_from_species,
+              evolution_chain: raw.evolution_chain,
+              habitat: raw.habitat,
+              generation: raw.generation,
+              names: raw.names,
+              genera: raw.genera,
+              varieties: raw.varieties,
+              flavor_text: latestEnglishFlavor(raw.flavor_text_entries || []),
+            };
+          } catch (_) {
+            // non-fatal for page
+          }
+        }
+
+        function extractIdFromUrl(url) {
+          if (typeof url !== 'string') return null;
+          const m = url.match(/\/(\d+)\/?$/);
+          return m ? Number(m[1]) : null;
+        }
+
+        function summarizeEvolutionConditions(details) {
+          if (!Array.isArray(details) || !details.length) return ["level up"]; // generic
+          const chips = [];
+          const d = details[0]; // often only one entry
+          // Common fields
+          if (d.min_level != null) chips.push(`Lv ${d.min_level}`);
+          if (d.item?.name) chips.push(`item: ${d.item.name}`);
+          if (d.held_item?.name) chips.push(`holds: ${d.held_item.name}`);
+          if (d.trigger?.name && !/level-up/i.test(d.trigger.name)) chips.push(d.trigger.name);
+          if (d.time_of_day) chips.push(d.time_of_day);
+          if (d.min_happiness != null) chips.push(`happiness ≥ ${d.min_happiness}`);
+          if (d.min_beauty != null) chips.push(`beauty ≥ ${d.min_beauty}`);
+          if (d.min_affection != null) chips.push(`affection ≥ ${d.min_affection}`);
+          if (d.known_move?.name) chips.push(`knows: ${d.known_move.name}`);
+          if (d.known_move_type?.name) chips.push(`move type: ${d.known_move_type.name}`);
+          if (d.location?.name) chips.push(`at: ${d.location.name}`);
+          if (d.needs_overworld_rain) chips.push(`raining`);
+          if (d.party_species?.name) chips.push(`party: ${d.party_species.name}`);
+          if (d.party_type?.name) chips.push(`party type: ${d.party_type.name}`);
+          if (d.relative_physical_stats != null) chips.push(`phys.stats: ${d.relative_physical_stats}`);
+          if (d.trade_species?.name) chips.push(`trade for: ${d.trade_species.name}`);
+          if (d.turn_upside_down) chips.push(`hold console upside-down`);
+          if (!chips.length) chips.push(d.trigger?.name || "evolves");
+          return chips;
+        }
+
+
+        function buildPathsFromChainNode(node, accSteps, accLinks, paths) {
+          // current species
+          const sp = node?.species || {};
+          const name = sp.name;
+          const id = extractIdFromUrl(sp.url);
+          const sprite = id ? `${SPRITE_BASE}/${id}.png` : '';
+          const step = { key: `${name}-${id ?? 'x'}`, name, id, sprite };
+          const stepsNext = [...accSteps, step];
+
+          const evolvesTo = Array.isArray(node?.evolves_to) ? node.evolves_to : [];
+          if (evolvesTo.length === 0) {
+            // end of path
+            paths.push({ steps: stepsNext, links: accLinks });
+            return;
+          }
+          for (const ev of evolvesTo) {
+            const conds = summarizeEvolutionConditions(ev.evolution_details || []);
+            const linksNext = [...accLinks, { conditions: conds }];
+            buildPathsFromChainNode(ev, stepsNext, linksNext, paths);
+          }
+        }
+
+
+
+        async function loadEvolutionChain() {
+          evoPaths.value = [];
+          evoError.value = "";
+          const chainUrl = speciesDetails.value?.evolution_chain?.url;
+          if (!chainUrl) return;
+          evoLoading.value = true;
+          try {
+            let data = null;
+            // Try backend pre-parsed paths first if we can extract an id
+            const id = extractIdFromUrl(chainUrl);
+            if (id) {
+              try {
+                const rPaths = await fetch(`/api/evolution-chain/${id}/paths`);
+                if (rPaths.ok) {
+                  const payload = await rPaths.json();
+                  if (payload && Array.isArray(payload.paths)) {
+                    evoPaths.value = payload.paths.filter(p => Array.isArray(p.steps) && p.steps.length > 0);
+                    return; // done, no client-side parsing needed
+                  }
+                }
+                // Fallback to raw chain via backend
+                const r = await fetch(`/api/evolution-chain/${id}`);
+                if (r.ok) data = await r.json();
+              } catch (_) { /* ignore */ }
+            }
+            if (!data) {
+              const r2 = await fetch(chainUrl);
+              if (!r2.ok) throw new Error(`Failed to load evolution chain (${r2.status})`);
+              data = await r2.json();
+            }
+            const root = data?.chain;
+            if (!root) throw new Error("No evolution chain data.");
+            const paths = [];
+            buildPathsFromChainNode(root, [], [], paths);
+            // Filter out degenerate paths
+            evoPaths.value = paths.filter(p => Array.isArray(p.steps) && p.steps.length > 0);
+          } catch (e) {
+            evoError.value = e?.message || String(e);
+          } finally {
+            evoLoading.value = false;
+          }
+        }
+
+        function prettify(name) {
+          if (typeof name !== 'string') return name;
+          return name.replace(/-/g, ' ');
+        }
+
+        function englishGenus(genera) {
+          if (!Array.isArray(genera)) return '';
+          const en = genera.find(g => (g.language?.name || g.language) === 'en');
+          return en?.genus || '';
+        }
+
+        function captureRateApprox(rate) {
+          const r = Number(rate);
+          if (!isFinite(r) || r < 0) return 0;
+          // Rough approximation: rate/255 chance, show one decimal
+          return Math.round((r / 255) * 1000) / 10;
+        }
+
+        async function loadEncounters(identifier, pokeData) {
+          encountersLoading.value = true;
+          encountersError.value = "";
+          encounters.value = null;
+          try {
+            // Try backend summary first
+            try {
+              const r = await fetch(`/api/pokemon/${encodeURIComponent(identifier)}/encounters`);
+              if (r.ok) {
+                const s = await r.json();
+                if (s && s.locations) {
+                  encounters.value = s;
+                  return;
+                }
+              }
+            } catch (_) { /* ignore */ }
+
+            // Fallback: fetch from PokeAPI encounters URL and summarize here
+            const url = pokeData?.location_area_encounters;
+            if (!url) return;
+            const r2 = await fetch(url);
+            if (!r2.ok) throw new Error(`Failed to load encounters (${r2.status})`);
+            const payload = await r2.json();
+            if (!Array.isArray(payload)) {
+              encounters.value = { error: 'Unexpected response', full_url: url };
+              return;
+            }
+            const summary = { pokemon: identifier, total_locations: payload.length, locations: [] };
+            for (const enc of payload) {
+              const location = enc?.location_area?.name || 'unknown';
+              const versions = [];
+              for (const vd of (enc?.version_details || [])) {
+                const version = vd?.version?.name || 'unknown';
+                const max_chance = vd?.max_chance || 0;
+                const methods = Array.from(new Set((vd?.encounter_details || []).map(ed => ed?.method?.name || 'unknown')));
+                versions.push({ version, max_chance, methods });
+              }
+              summary.locations.push({ location, versions });
+            }
+            summary.full_url = url;
+            encounters.value = summary;
+          } catch (e) {
+            encountersError.value = e?.message || String(e);
+          } finally {
+            encountersLoading.value = false;
           }
         }
 
@@ -378,7 +761,7 @@
           if (pokemon.value) renderStatsChart();
         });
 
-        return { generations, selectedGen, species, selectedPokemon, speciesOpen, loading, error, pokemon, search, loadSpecies, toggleSpeciesList, chooseSpecies, primarySprite, types, abilities, stats, cries, spriteVariants, typeStyle, statsCanvas };
+        return { generations, selectedGen, species, selectedPokemon, speciesOpen, loading, error, pokemon, search, loadSpecies, toggleSpeciesList, chooseSpecies, primarySprite, types, abilities, stats, cries, spriteVariants, typeStyle, statsCanvas, speciesDetails, evoLoading, evoError, evoPaths, encountersLoading, encountersError, encounters, prettify, englishGenus, captureRateApprox };
       }
     }).mount('#app');
   </script>
