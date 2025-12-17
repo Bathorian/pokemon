@@ -15,13 +15,6 @@ from main import summarize_pokemon, POKEAPI_BASE
 
 app = Flask(__name__, static_folder=None)
 CORS(app)
-# Initialize SQLite database for logging
-try:
-    # Best-effort init; failures are ignored to avoid breaking the app
-    # _db_init is defined later in the file; declare type: ignore for forward ref
-    pass
-except Exception:
-    pass
 
 # ==================== CONSTANTS ====================
 
@@ -227,9 +220,6 @@ def _split_endpoint_from_url(url: str) -> Tuple[Optional[str], Optional[str]]:
         return endpoint, identifier
     except Exception:
         return None, None
-
-# Initialize DB at import time as well (safe no-op if already created)
-_db_init()
 
 def _http_get_json(url: str, timeout: float = 10.0) -> Dict[str, Any]:
     """Helper to fetch JSON from a URL (with SQLite logging)."""
@@ -1074,19 +1064,4 @@ def language(identifier: str) -> Response:
 # ==================== RUN ====================
 
 if __name__ == "__main__":
-    # Ensure DB is initialized before running
-    try:
-        from __main__ import _db_init as _init  # type: ignore
-    except Exception:
-        _init = None  # type: ignore
-    try:
-        # Fallback: direct import from this module
-        _init = _init or _db_init  # type: ignore[name-defined]
-    except Exception:
-        _init = None  # type: ignore
-    try:
-        if _init:
-            _init()  # type: ignore[misc]
-    except Exception:
-        pass
     app.run(host="127.0.0.1", port=5000, debug=True)
