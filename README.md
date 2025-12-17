@@ -4,8 +4,8 @@ Simple CLI to fetch Pokémon data from the public PokeAPI.
 
 Web (Vue.js) — no build required
 - Open index.html in your browser.
-- Type a Pokémon name or numeric ID into the textbox and press Enter (or click Search).
-- The page will fetch https://pokeapi.co/api/v2/pokemon/<your_input> and render the info.
+- Use the selectors: first choose a Generation, then select a Pokémon from that generation and click "Load".
+- The page will fetch https://pokeapi.co/api/v2/generation to list generations, then https://pokeapi.co/api/v2/generation/<id> for species, and finally https://pokeapi.co/api/v2/pokemon/<pokemon_name> to render the info.
 - Works as a static file (no server needed). Uses Vue 3 via CDN and the browser Fetch API.
 
 What this does
@@ -42,3 +42,9 @@ Notes
 
 Tip
 - For the web page, you can also serve it locally (optional) using a simple static server if your browser blocks local file audio for cries links. For example, with Python: python -m http.server 8000 and then open http://localhost:8000/index.html
+
+Web UI details
+- Generation selector loads from https://pokeapi.co/api/v2/generation?limit=100.
+- Pokémon selector is populated from the selected generation’s pokemon_species list and sorted alphabetically.
+- The fetch uses the species name as the last path segment of https://pokeapi.co/api/v2/pokemon/<name>.
+- Errors and loading states are shown inline in the page.
