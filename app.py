@@ -74,8 +74,6 @@ ENDPOINTS = [
 ]
 
 
-# ==================== VALIDATION & URL BUILDERS ====================
-
 def validate_endpoint(endpoint: str, resource_id: Optional[str] = None) -> None:
     """Validate that the endpoint exists in the API."""
     if endpoint not in ENDPOINTS:
