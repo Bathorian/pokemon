@@ -5,23 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pokémon Lookup (Vue)</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 20px; background: #f8fafc; color: #0f172a; }
+    /* Dark theme styles */
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 20px; background: #0b1220; color: #e5e7eb; }
     .container { max-width: 900px; margin: 0 auto; }
     h1 { font-size: 1.6rem; margin-bottom: 1rem; }
-    .search { display: flex; gap: 8px; margin-bottom: 1rem; }
-    input[type="text"] { flex: 1; padding: 10px 12px; font-size: 1rem; border: 1px solid #cbd5e1; border-radius: 8px; }
+    .search { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+    input[type="text"], select { flex: 1; min-width: 220px; padding: 10px 12px; font-size: 1rem; border: 1px solid #374151; border-radius: 8px; background: #111827; color: #e5e7eb; }
     button { padding: 10px 14px; border: 0; background: #2563eb; color: white; border-radius: 8px; cursor: pointer; font-weight: 600; }
-    button:disabled { background: #93c5fd; cursor: not-allowed; }
-    .card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+    button:disabled { background: #334155; cursor: not-allowed; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
     .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
     .media { width: 160px; text-align: center; }
     .media img { width: 120px; height: 120px; image-rendering: pixelated; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 0.85rem; margin-right: 6px; }
-    .muted { color: #475569; font-size: 0.95rem; }
-    .error { background: #fee2e2; color: #7f1d1d; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #1e293b; color: #c7d2fe; font-size: 0.85rem; margin-right: 6px; }
+    .muted { color: #94a3b8; font-size: 0.95rem; }
+    .error { background: #3f1d1d; color: #fecaca; border: 1px solid #7f1d1d; padding: 10px 12px; border-radius: 8px; }
     .section-title { font-weight: 700; margin-top: 12px; margin-bottom: 6px; }
-    a { color: #2563eb; text-decoration: none; }
+    a { color: #60a5fa; text-decoration: none; }
+    /* Custom dropdown for Pokémon with inline sprites */
+    .dropdown { position: relative; flex: 1; min-width: 260px; }
+    .dropdown-toggle { width: 100%; text-align: left; padding: 10px 12px; font-size: 1rem; border: 1px solid #374151; border-radius: 8px; background: #111827; color: #e5e7eb; display: flex; align-items: center; gap: 8px; }
+    .dropdown-toggle img { width: 28px; height: 28px; image-rendering: pixelated; }
+    .dropdown-menu { position: absolute; z-index: 10; background: #0f172a; border: 1px solid #1f2937; border-radius: 8px; width: 100%; max-height: 300px; overflow: auto; margin-top: 6px; box-shadow: 0 10px 24px rgba(0,0,0,0.45); }
+    .dropdown-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; color: #e5e7eb; }
+    .dropdown-item img { width: 28px; height: 28px; image-rendering: pixelated; }
+    .dropdown-item:hover { background: #1f2937; }
   </style>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 </head>
@@ -29,14 +38,31 @@
   <div id="app" class="container">
     <h1>Pokémon Lookup</h1>
     <div class="search">
-      <input
-        type="text"
-        placeholder="Type a Pokémon name or ID(use lower case)"
-        v-model.trim="query"
-        @keyup.enter="search"
-        :disabled="loading"
-      />
-      <button @click="search" :disabled="loading || !query">{{ loading ? 'Searching…' : 'Search' }}</button>
+      <select v-model="selectedGen" @change="loadSpecies" :disabled="loading || generations.length === 0" aria-label="Generation selector">
+        <option value="" disabled>Select generation…</option>
+        <option v-for="g in generations" :key="g.id" :value="g.id">Generation {{ g.id }} — {{ g.name }}</option>
+      </select>
+
+      <!-- Custom Pokémon dropdown with sprite icons -->
+      <div class="dropdown" :aria-disabled="loading || species.length === 0">
+        <button type="button" class="dropdown-toggle" @click="toggleSpeciesList" :disabled="loading || species.length === 0" aria-haspopup="listbox" :aria-expanded="speciesOpen">
+          <template v-if="selectedPokemon">
+            <img :src="selectedPokemon.sprite" :alt="selectedPokemon.name + ' sprite'" />
+            <span style="text-transform: capitalize;">{{ selectedPokemon.name }}</span>
+          </template>
+          <template v-else>
+            <span class="muted">Select a Pokémon…</span>
+          </template>
+        </button>
+        <div v-if="speciesOpen" class="dropdown-menu" role="listbox">
+          <div class="dropdown-item" v-for="item in species" :key="item.id + '-' + item.name" role="option" @click="chooseSpecies(item)">
+            <img :src="item.sprite" :alt="item.name + ' sprite'" />
+            <span style="text-transform: capitalize;">{{ item.name }}</span>
+          </div>
+        </div>
+      </div>
+
+      <button @click="search" :disabled="loading || !selectedPokemon">{{ loading ? 'Loading…' : 'Load' }}</button>
     </div>
 
     <div v-if="error" class="error" role="alert">{{ error }}</div>
@@ -110,15 +136,23 @@
   </div>
 
   <script>
-    const { createApp, ref, computed } = Vue;
+    const { createApp, ref, computed, onMounted } = Vue;
     createApp({
       setup() {
-        const query = ref("");
+        // selectors state
+        const generations = ref([]); // [{id, name, url}]
+        const selectedGen = ref("");
+        const species = ref([]); // [{id, name, sprite}]
+        const selectedPokemon = ref(null); // {id, name, sprite}
+        const speciesOpen = ref(false);
+
         const loading = ref(false);
         const error = ref("");
         const pokemon = ref(null);
 
         const API_BASE = "https://pokeapi.co/api/v2/pokemon/";
+        const GENERATION_LIST = "https://pokeapi.co/api/v2/generation?limit=100";
+        const GENERATION_DETAIL = (id) => `https://pokeapi.co/api/v2/generation/${id}`;
 
         const primarySprite = computed(() => pokemon.value?.sprites?.front_default || "");
         const types = computed(() => (pokemon.value?.types || []).map(t => ({ slot: t.slot, name: t.type?.name })));
@@ -134,12 +168,70 @@
         })));
         const cries = computed(() => pokemon.value?.cries || {});
 
+        async function loadGenerations() {
+          try {
+            error.value = "";
+            const resp = await fetch(GENERATION_LIST);
+            const data = await resp.json();
+            const gens = (data.results || []).map((r) => {
+              const m = (r.url || "").match(/\/(\d+)\/?$/);
+              const id = m ? Number(m[1]) : r.name;
+              return { id, name: r.name, url: r.url };
+            }).sort((a,b) => (a.id > b.id ? 1 : -1));
+            generations.value = gens;
+          } catch (e) {
+            error.value = e?.message || String(e);
+          }
+        }
+
+        async function loadSpecies() {
+          species.value = [];
+          selectedPokemon.value = null;
+          speciesOpen.value = false;
+          pokemon.value = null;
+          if (!selectedGen.value) return;
+          loading.value = true;
+          error.value = "";
+          try {
+            const resp = await fetch(GENERATION_DETAIL(selectedGen.value));
+            if (!resp.ok) throw new Error(`Failed to load generation ${selectedGen.value} (${resp.status})`);
+            const data = await resp.json();
+            const list = (data.pokemon_species || [])
+              .map(s => {
+                const name = s.name;
+                // Extract numeric id from species URL
+                const m = (s.url || "").match(/\/(\d+)\/?$/);
+                const id = m ? Number(m[1]) : null;
+                // Build sprite URL using the numeric id when available
+                const sprite = id ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png` : "";
+                return { id: id ?? name, name, sprite };
+              })
+              .filter(item => !!item.name)
+              .sort((a, b) => a.name.localeCompare(b.name));
+            species.value = list;
+          } catch (e) {
+            error.value = e?.message || String(e);
+          } finally {
+            loading.value = false;
+          }
+        }
+
+        function toggleSpeciesList() {
+          if (loading.value || species.value.length === 0) return;
+          speciesOpen.value = !speciesOpen.value;
+        }
+
+        function chooseSpecies(item) {
+          selectedPokemon.value = item;
+          speciesOpen.value = false;
+        }
+
         async function search() {
           error.value = "";
           pokemon.value = null;
-          const q = (query.value || "").trim().toLowerCase();
+          const q = (selectedPokemon.value?.name || "").trim().toLowerCase();
           if (!q) {
-            error.value = "Please enter a Pokémon name or ID.gdfgsdgdsgsdgsdgsdgsgsgdsgsdgsd";
+            error.value = "Please select a Pokémon.";
             return;
           }
           loading.value = true;
@@ -147,10 +239,6 @@
             const resp = await fetch(API_BASE + encodeURIComponent(q));
             if (resp.status === 404) {
               throw new Error(`Pokémon "${q}" not found (404).`);
-            }
-            if (!resp.ok) {
-              const text = await resp.text();
-              throw new Error(`PokeAPI returned ${resp.status}: ${text.substring(0, 180)}`);
             }
             const data = await resp.json();
             pokemon.value = data;
@@ -161,7 +249,9 @@
           }
         }
 
-        return { query, loading, error, pokemon, search, primarySprite, types, abilities, stats, cries };
+        onMounted(loadGenerations);
+
+        return { generations, selectedGen, species, selectedPokemon, speciesOpen, loading, error, pokemon, search, loadSpecies, toggleSpeciesList, chooseSpecies, primarySprite, types, abilities, stats, cries };
       }
     }).mount('#app');
   </script>
