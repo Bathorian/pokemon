@@ -5,7 +5,7 @@ Simple CLI to fetch Pokémon data from the public PokeAPI.
 Web (Vue.js) — no build required
 - Open index.html in your browser.
 - Type a Pokémon name or numeric ID into the textbox and press Enter (or click Search).
-- The page will fetch `https://pokeapi.co/api/v2/pokemon/<your_input>` and render the info.
+- The page will fetch https://pokeapi.co/api/v2/pokemon/<your_input> and render the info.
 - Works as a static file (no server needed). Uses Vue 3 via CDN and the browser Fetch API.
 
 What this does
