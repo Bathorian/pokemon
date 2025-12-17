@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pokémon Lookup (Vue)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 20px; background: #f8fafc; color: #0f172a; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 1.6rem; margin-bottom: 1rem; }
+    .search { display: flex; gap: 8px; margin-bottom: 1rem; }
+    input[type="text"] { flex: 1; padding: 10px 12px; font-size: 1rem; border: 1px solid #cbd5e1; border-radius: 8px; }
+    button { padding: 10px 14px; border: 0; background: #2563eb; color: white; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    button:disabled { background: #93c5fd; cursor: not-allowed; }
+    .card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .media { width: 160px; text-align: center; }
+    .media img { width: 120px; height: 120px; image-rendering: pixelated; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 0.85rem; margin-right: 6px; }
+    .muted { color: #475569; font-size: 0.95rem; }
+    .error { background: #fee2e2; color: #7f1d1d; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; }
+    .section-title { font-weight: 700; margin-top: 12px; margin-bottom: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+  </style>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+  <div id="app" class="container">
+    <h1>Pokémon Lookup</h1>
+    <div class="search">
+      <input
+        type="text"
+        placeholder="Type a Pokémon name or ID(use lower case)"
+        v-model.trim="query"
+        @keyup.enter="search"
+        :disabled="loading"
+      />
+      <button @click="search" :disabled="loading || !query">{{ loading ? 'Searching…' : 'Search' }}</button>
+    </div>
+
+    <div v-if="error" class="error" role="alert">{{ error }}</div>
+
+    <div v-if="pokemon" class="card">
+      <div class="row">
+        <div class="media" v-if="primarySprite">
+          <img :src="primarySprite" :alt="`Sprite of ${pokemon.name}`" />
+          <div class="muted">Sprite</div>
+        </div>
+        <div style="flex:1; min-width: 240px;">
+          <div class="section-title" style="margin-top:0;">Summary</div>
+          <div class="grid">
+            <div><strong>Name:</strong> {{ pokemon.name }}</div>
+            <div><strong>ID:</strong> {{ pokemon.id }}</div>
+            <div><strong>Height:</strong> {{ pokemon.height }}</div>
+            <div><strong>Weight:</strong> {{ pokemon.weight }}</div>
+            <div v-if="pokemon.base_experience != null"><strong>Base XP:</strong> {{ pokemon.base_experience }}</div>
+            <div v-if="pokemon.order != null"><strong>Order:</strong> {{ pokemon.order }}</div>
+            <div v-if="pokemon.is_default != null"><strong>Is default:</strong> {{ pokemon.is_default }}</div>
+          </div>
+
+          <div class="section-title">Types</div>
+          <div v-if="types.length">
+            <span v-for="t in types" :key="t.slot" class="pill">[{{ t.slot }}] {{ t.name }}</span>
+          </div>
+          <div v-else class="muted">n/a</div>
+
+          <div class="section-title">Abilities</div>
+          <div v-if="abilities.length">
+            <div v-for="a in abilities" :key="a.key">{{ a.name }} <span class="muted">(hidden={{ a.hidden }}, slot={{ a.slot }})</span></div>
+          </div>
+          <div v-else class="muted">n/a</div>
+
+          <div class="section-title">Base stats</div>
+          <div class="grid">
+            <div v-for="s in stats" :key="s.name"><strong>{{ s.name }}:</strong> {{ s.value }}</div>
+          </div>
+
+          <div class="section-title" v-if="pokemon.held_items && pokemon.held_items.length">Held items</div>
+          <div v-if="pokemon.held_items && pokemon.held_items.length" class="grid">
+            <div v-for="hi in pokemon.held_items" :key="hi.item.name">{{ hi.item.name }}</div>
+          </div>
+
+          <div class="section-title" v-if="pokemon.forms && pokemon.forms.length">Forms</div>
+          <div v-if="pokemon.forms && pokemon.forms.length" class="grid">
+            <div v-for="f in pokemon.forms" :key="f.name">{{ f.name }}</div>
+          </div>
+
+          <div class="section-title" v-if="pokemon.species">Species</div>
+          <div v-if="pokemon.species" class="muted">
+            <span v-if="pokemon.species.name">{{ pokemon.species.name }}</span>
+            <span v-if="pokemon.species.url"> — <a :href="pokemon.species.url" target="_blank" rel="noreferrer noopener">API</a></span>
+          </div>
+
+          <div class="section-title" v-if="pokemon.location_area_encounters">Encounters</div>
+          <div v-if="pokemon.location_area_encounters" class="muted">
+            <a :href="pokemon.location_area_encounters" target="_blank" rel="noreferrer noopener">View encounter locations</a>
+          </div>
+
+          <div class="section-title" v-if="cries.latest || cries.legacy">Cries</div>
+          <div v-if="cries.latest || cries.legacy" class="grid">
+            <div v-if="cries.latest"><a :href="cries.latest" target="_blank" rel="noreferrer noopener">Latest</a></div>
+            <div v-if="cries.legacy"><a :href="cries.legacy" target="_blank" rel="noreferrer noopener">Legacy</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="muted" style="margin-top:16px;">Data from <a href="https://pokeapi.co/" target="_blank" rel="noreferrer noopener">PokeAPI</a>. This is a static page using Vue 3 from CDN.</p>
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+    createApp({
+      setup() {
+        const query = ref("");
+        const loading = ref(false);
+        const error = ref("");
+        const pokemon = ref(null);
+
+        const API_BASE = "https://pokeapi.co/api/v2/pokemon/";
+
+        const primarySprite = computed(() => pokemon.value?.sprites?.front_default || "");
+        const types = computed(() => (pokemon.value?.types || []).map(t => ({ slot: t.slot, name: t.type?.name })));
+        const abilities = computed(() => (pokemon.value?.abilities || []).map(a => ({
+          key: `${a.ability?.name}-${a.slot}-${a.is_hidden}`,
+          name: a.ability?.name,
+          hidden: a.is_hidden,
+          slot: a.slot
+        })));
+        const stats = computed(() => (pokemon.value?.stats || []).map(s => ({
+          name: s.stat?.name,
+          value: s.base_stat
+        })));
+        const cries = computed(() => pokemon.value?.cries || {});
+
+        async function search() {
+          error.value = "";
+          pokemon.value = null;
+          const q = (query.value || "").trim().toLowerCase();
+          if (!q) {
+            error.value = "Please enter a Pokémon name or ID.";
+            return;
+          }
+          loading.value = true;
+          try {
+            const resp = await fetch(API_BASE + encodeURIComponent(q));
+            if (resp.status === 404) {
+              throw new Error(`Pokémon "${q}" not found (404).`);
+            }
+            if (!resp.ok) {
+              const text = await resp.text();
+              throw new Error(`PokeAPI returned ${resp.status}: ${text.substring(0, 180)}`);
+            }
+            const data = await resp.json();
+            pokemon.value = data;
+          } catch (e) {
+            error.value = e?.message || String(e);
+          } finally {
+            loading.value = false;
+          }
+        }
+
+        return { query, loading, error, pokemon, search, primarySprite, types, abilities, stats, cries };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
