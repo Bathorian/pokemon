@@ -7,6 +7,8 @@ Web (Vue.js) — no build required
 - Type a Pokémon name or numeric ID into the textbox and press Enter (or click Search).
 - The page will fetch https://pokeapi.co/api/v2/pokemon/<your_input> and render the info.
 - Works as a static file (no server needed). Uses Vue 3 via CDN and the browser Fetch API.
+- 
+**You can also view the app live here:** https://bathorian.github.io/pokemon/
 
 What this does
 - Calls `https://pokeapi.co/api/v2/pokemon/{name_or_id}` (for example: `pikachu`)

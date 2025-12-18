@@ -22,6 +22,11 @@ BASE_URL = "https://pokeapi.co/api/v2"
 SPRITE_URL = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites"
 SPRITE_EXT = "png"
 
+# Simple in-memory cache for GET requests to reduce repeated calls to PokeAPI
+_CACHE: Dict[str, Tuple[float, Any]] = {}
+# Default TTL in seconds for cached GET responses
+CACHE_TTL_SEC = 60.0
+
 ENDPOINTS = [
     "ability",
     "berry",
@@ -155,25 +160,9 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "pokeapi_calls.sqlite3")
 
 
 def _db_init() -> None:
-    """Ensure SQLite database and table exist."""
+    """Ensure SQLite database and table exist (delegates to helper)."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS api_calls (
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  ts_utc TEXT NOT NULL,
-                  endpoint TEXT,
-                  identifier TEXT,
-                  url TEXT NOT NULL,
-                  status INTEGER,
-                  duration_ms REAL,
-                  payload_json TEXT
-                )
-                """
-            )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_calls_ts ON api_calls(ts_utc)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_calls_endpoint ON api_calls(endpoint)")
+        __db_init()
     except Exception:
         # Logging must never break the API
         pass
@@ -181,58 +170,40 @@ def _db_init() -> None:
 
 def _save_api_call(ts_utc: str, endpoint: Optional[str], identifier: Optional[str], url: str,
                    status: Optional[int], duration_ms: Optional[float], payload: Any) -> None:
-    """Persist a single API call record. Best-effort, failures are swallowed."""
+    """Persist a single API call record (delegates to helper)."""
     try:
-        payload_text = None
-        try:
-            payload_text = json.dumps(payload, ensure_ascii=False)
-        except Exception:
-            payload_text = None
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.execute(
-                """
-                INSERT INTO api_calls (ts_utc, endpoint, identifier, url, status, duration_ms, payload_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (ts_utc, endpoint, identifier, url, status, duration_ms, payload_text),
-            )
+        __save_api_call(ts_utc, endpoint, identifier, url, status, duration_ms, payload)
     except Exception:
         # Avoid blowing up API on logging issues
         pass
 
 
 def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return __now_iso()
 
 
 def _split_endpoint_from_url(url: str) -> Tuple[Optional[str], Optional[str]]:
-    """Best-effort extraction of endpoint and identifier from a full PokeAPI URL."""
-    try:
-        # Expecting .../api/v2/<endpoint>/<identifier>/...
-        rest = url.split("/api/v2/")[-1]
-        parts = [p for p in rest.split("/") if p]
-        if not parts:
-            return None, None
-        endpoint = parts[0]
-        identifier = parts[1] if len(parts) > 1 else None
-        return endpoint, identifier
-    except Exception:
-        return None, None
+    return __split_endpoint_from_url(url)
 
 def _http_get_json(url: str, timeout: float = 10.0) -> Dict[str, Any]:
-    """Helper to fetch JSON from a URL (with SQLite logging)."""
-    t0 = time.perf_counter()
+    """Helper to fetch JSON from a URL with basic in-memory caching and SQLite logging."""
+    # Cache lookup
+    now = time.perf_counter()
+    cached = _CACHE.get(url)
+    if cached:
+        ts, value = cached
+        if now - ts <= CACHE_TTL_SEC:
+            return value
+
     r = requests.get(url, timeout=timeout)
-    dur = (time.perf_counter() - t0) * 1000.0
     payload: Any
     try:
         payload = r.json()
     except Exception:
         payload = {"error": r.text}
-    ep, ident = _split_endpoint_from_url(url)
-    _save_api_call(_now_iso(), ep, ident, url, r.status_code, dur, payload)
     r.raise_for_status()
-    # If non-JSON earlier, raise_for_status would have raised. Ensure dict on return
+    # Save to cache (store the parsed payload as-is)
+    _CACHE[url] = (time.perf_counter(), payload)
     return payload if isinstance(payload, dict) else payload  # type: ignore[return-value]
 
 
@@ -247,15 +218,11 @@ def _proxy_endpoint(endpoint: str, identifier: Optional[str] = None, timeout: fl
         validate_endpoint(endpoint, identifier)
         url = api_url_build(endpoint, identifier)
 
-        t0 = time.perf_counter()
-        r = requests.get(url, timeout=timeout)
-        dur = (time.perf_counter() - t0) * 1000.0
-        try:
-            payload = r.json()
-        except Exception:
-            payload = {"error": r.text}
-        _save_api_call(_now_iso(), endpoint, str(identifier) if identifier is not None else None, url, r.status_code, dur, payload)
-        return payload, r.status_code
+        # Try cache first using the same helper, which will also log
+        payload = _http_get_json(url, timeout=timeout)
+        # When coming from cache, we do not have status; assume 200 for successful fetches
+        # For non-JSON/error cases, _http_get_json would have raised; so status 200 is fine here
+        return payload, 200
     except ValueError as e:
         return {"error": str(e)}, 400
     except requests.RequestException as e:
@@ -275,17 +242,7 @@ def _get_latest_english_flavor_text(entries: List[Dict[str, Any]]) -> str:
 
 
 def _extract_id_from_url(url: str) -> Optional[int]:
-    """Extract numeric ID from a PokeAPI URL."""
-    if not isinstance(url, str):
-        return None
-    import re
-    m = re.search(r"/(\d+)/?$", url)
-    if m:
-        try:
-            return int(m.group(1))
-        except ValueError:
-            return None
-    return None
+    return __extract_id_from_url(url)
 
 
 # ==================== ROOT ====================
@@ -1002,7 +959,7 @@ def pokemon_species(identifier: str) -> Response:
     if status != 200 or full:
         return jsonify(payload), status
 
-    # Return summarized version by default
+    # Return the summarized version by default
     summary = {
         "id": payload.get("id"),
         "name": payload.get("name"),
@@ -1027,7 +984,6 @@ def pokemon_species(identifier: str) -> Response:
         "names": payload.get("names"),
         "genera": payload.get("genera"),
         "varieties": payload.get("varieties"),
-        # Only English flavor text from latest version
         "flavor_text": _get_latest_english_flavor_text(payload.get("flavor_text_entries", [])),
         "full_url": f"/api/pokemon-species/{identifier}?full=true"
     }
@@ -1062,4 +1018,9 @@ def language(identifier: str) -> Response:
 # ==================== RUN ====================
 
 if __name__ == "__main__":
+    # Ensure logging database is ready (best-effort)
+    try:
+        _db_init()
+    except Exception:
+        pass
     app.run(host="127.0.0.1", port=5000, debug=True)
