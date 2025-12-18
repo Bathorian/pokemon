@@ -36,6 +36,7 @@
     .dropdown-item img { width: 28px; height: 28px; image-rendering: pixelated; }
     .dropdown-item:hover { background: #1f2937; }
 
+
   </style>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <!-- Chart.js for visualizing base stats -->
@@ -211,6 +212,7 @@
                   <template v-for="(step, i) in p.steps" :key="step.key">
                     <div style="display:flex; align-items:center; gap:8px;">
                       <div
+                        class="evo-step"
                         style=" text-align:center; min-width:110px; cursor:pointer; padding:6px; border-radius:8px;"
                         role="button"
                         tabindex="0"
