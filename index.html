@@ -117,12 +117,6 @@
             <div v-for="f in pokemon.forms" :key="f.name">{{ f.name }}</div>
           </div>
 
-          <div class="section-title" v-if="pokemon.species">Species</div>
-          <div v-if="pokemon.species" class="muted">
-            <span v-if="pokemon.species.name">{{ pokemon.species.name }}</span>
-            <span v-if="pokemon.species.url"> — <a :href="pokemon.species.url" target="_blank" rel="noreferrer noopener">API</a></span>
-          </div>
-
           <div class="section-title" v-if="pokemon.location_area_encounters">Encounters</div>
           <div v-if="pokemon.location_area_encounters">
             <div v-if="encountersLoading" class="muted">Loading encounter locations…</div>
@@ -134,7 +128,6 @@
                   <div v-for="loc in encounters.locations" :key="loc.location" class="card" style="padding:10px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
                       <div style="font-weight:700; text-transform: capitalize;">{{ prettify(loc.location) }}</div>
-                      <a class="muted" :href="`https://pokeapi.co/api/v2/location-area/${loc.location}`" target="_blank" rel="noreferrer noopener">Open API</a>
                     </div>
                     <div v-if="loc.versions && loc.versions.length" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
                       <div v-for="v in loc.versions" :key="v.version" class="pill" title="Max chance">
@@ -151,9 +144,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
-              <div style="margin-top:6px;">
-                <a class="muted" :href="encounters && encounters.full_url ? encounters.full_url : pokemon.location_area_encounters" target="_blank" rel="noreferrer noopener">Open full encounters JSON</a>
               </div>
             </template>
           </div>
@@ -231,10 +221,6 @@
                 </div>
               </div>
             </div>
-            <!-- Fallback link -->
-            <div style="margin-top:6px;">
-              <a class="muted" :href="speciesDetails.evolution_chain.url" target="_blank" rel="noreferrer noopener">Open evolution chain API</a>
-            </div>
           </div>
 
           <div v-if="speciesDetails && speciesDetails.varieties && speciesDetails.varieties.length" style="margin-top:8px;">
@@ -248,8 +234,6 @@
         </div>
       </div>
     </div>
-
-    <p class="muted" style="margin-top:16px;">Data from <a href="https://pokeapi.co/" target="_blank" rel="noreferrer noopener">PokeAPI</a>. This is a static page using Vue 3 from CDN.</p>
   </div>
 
   <script>
