@@ -12,6 +12,13 @@ from flask import Flask, jsonify, send_file, Response
 from flask_cors import CORS
 
 from main import summarize_pokemon, POKEAPI_BASE
+# Internal helper modules (extracted to reduce app.py size)
+from pkapp.db.logging import db_init as __db_init, save_api_call as __save_api_call
+from pkapp.utils.time import now_iso as __now_iso
+from pkapp.utils.url import (
+    split_endpoint_from_url as __split_endpoint_from_url,
+    extract_id_from_url as __extract_id_from_url,
+)
 
 app = Flask(__name__, static_folder=None)
 CORS(app)
@@ -436,13 +443,21 @@ def _summarize_evolution_conditions_py(details: List[Dict[str, Any]]) -> List[st
     chips: List[str] = []
     if d.get("min_level") is not None:
         chips.append(f"Lv {d.get('min_level')}")
-    if d.get("item", {}).get("name"):
-        chips.append(f"item: {d['item']['name']}")
-    if d.get("held_item", {}).get("name"):
-        chips.append(f"holds: {d['held_item']['name']}")
-    trig = (d.get("trigger") or {}).get("name")
+
+    # FIX: Add None checks
+    item = d.get("item")
+    if item and item.get("name"):
+        chips.append(f"item: {item['name']}")
+
+    held_item = d.get("held_item")
+    if held_item and held_item.get("name"):
+        chips.append(f"holds: {held_item['name']}")
+
+    trigger = d.get("trigger")
+    trig = trigger.get("name") if trigger else None
     if trig and "level-up" not in trig:
         chips.append(trig)
+
     if d.get("time_of_day"):
         chips.append(d["time_of_day"])
     if d.get("min_happiness") is not None:
@@ -451,24 +466,40 @@ def _summarize_evolution_conditions_py(details: List[Dict[str, Any]]) -> List[st
         chips.append(f"beauty ≥ {d.get('min_beauty')}")
     if d.get("min_affection") is not None:
         chips.append(f"affection ≥ {d.get('min_affection')}")
-    if (d.get("known_move") or {}).get("name"):
-        chips.append(f"knows: {d['known_move']['name']}")
-    if (d.get("known_move_type") or {}).get("name"):
-        chips.append(f"move type: {d['known_move_type']['name']}")
-    if (d.get("location") or {}).get("name"):
-        chips.append(f"at: {d['location']['name']}")
+
+    known_move = d.get("known_move")
+    if known_move and known_move.get("name"):
+        chips.append(f"knows: {known_move['name']}")
+
+    known_move_type = d.get("known_move_type")
+    if known_move_type and known_move_type.get("name"):
+        chips.append(f"move type: {known_move_type['name']}")
+
+    location = d.get("location")
+    if location and location.get("name"):
+        chips.append(f"at: {location['name']}")
+
     if d.get("needs_overworld_rain"):
         chips.append("raining")
-    if (d.get("party_species") or {}).get("name"):
-        chips.append(f"party: {d['party_species']['name']}")
-    if (d.get("party_type") or {}).get("name"):
-        chips.append(f"party type: {d['party_type']['name']}")
+
+    party_species = d.get("party_species")
+    if party_species and party_species.get("name"):
+        chips.append(f"party: {party_species['name']}")
+
+    party_type = d.get("party_type")
+    if party_type and party_type.get("name"):
+        chips.append(f"party type: {party_type['name']}")
+
     if d.get("relative_physical_stats") is not None:
         chips.append(f"phys.stats: {d.get('relative_physical_stats')}")
-    if (d.get("trade_species") or {}).get("name"):
-        chips.append(f"trade for: {d['trade_species']['name']}")
+
+    trade_species = d.get("trade_species")
+    if trade_species and trade_species.get("name"):
+        chips.append(f"trade for: {trade_species['name']}")
+
     if d.get("turn_upside_down"):
         chips.append("hold console upside-down")
+
     if not chips:
         chips.append(trig or "evolves")
     return chips
