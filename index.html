@@ -1,9 +1,13 @@
 <!doctype html>
 <html lang="en">
+
 <head>
+    <link rel="icon" type="image/png" sizes="190x190" href="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png" />
+
+
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pokémon Lookup (Vue)</title>
+  <title>Pokémon Lookup</title>
   <style>
     /* Dark theme styles */
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 20px; background: #0b1220; color: #e5e7eb; }
@@ -31,6 +35,8 @@
     .dropdown-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; color: #e5e7eb; }
     .dropdown-item img { width: 28px; height: 28px; image-rendering: pixelated; }
     .dropdown-item:hover { background: #1f2937; }
+
+
   </style>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <!-- Chart.js for visualizing base stats -->
@@ -70,10 +76,9 @@
     <div v-if="error" class="error" role="alert">{{ error }}</div>
 
     <div v-if="pokemon" class="card">
-      <div class="row">
+      <div class="columns" style="gap: 24px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap;">
         <div class="media" v-if="primarySprite">
           <img :src="primarySprite" :alt="`Sprite of ${pokemon.name}`" />
-          <div class="muted">Sprite</div>
         </div>
         <div style="flex:1; min-width: 240px;">
           <div class="section-title" style="margin-top:0;">Summary</div>
@@ -206,7 +211,16 @@
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                   <template v-for="(step, i) in p.steps" :key="step.key">
                     <div style="display:flex; align-items:center; gap:8px;">
-                      <div style="text-align:center; min-width:110px;">
+                      <div
+                        class="evo-step"
+                        style=" text-align:center; min-width:110px; cursor:pointer; padding:6px; border-radius:8px;"
+                        role="button"
+                        tabindex="0"
+                        @click="openFromEvolution(step)"
+                        @keydown.enter="openFromEvolution(step)"
+                        @keydown.space.prevent="openFromEvolution(step)"
+                        :aria-label="'Open ' + step.name + ' details'"
+                      >
                         <img :src="step.sprite" :alt="step.name + ' sprite'" style="width:72px; height:72px; image-rendering: pixelated; display:block; margin:0 auto;" />
                         <div style="text-transform: capitalize; font-weight:600;">{{ step.name }}</div>
                       </div>
@@ -510,6 +524,21 @@
           }
         }
 
+        // Open a Pokémon from an evolution step tile
+        async function openFromEvolution(step) {
+          try {
+            if (!step || loading.value) return;
+            // Ensure we have a selectedPokemon object compatible with the dropdown item shape
+            const item = { id: step.id ?? step.name, name: step.name, sprite: step.sprite || (step.id ? `${SPRITE_BASE}/${step.id}.png` : '') };
+            selectedPokemon.value = item;
+            speciesOpen.value = false;
+            await nextTick();
+            await search();
+            // Scroll to top so the user sees the newly opened Pokémon
+            try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) { /* noop */ }
+          } catch (_) { /* errors surface via search() */ }
+        }
+
         function latestEnglishFlavor(entries) {
           if (!Array.isArray(entries)) return "";
           // filter english entries, take the last one to approximate latest
@@ -745,7 +774,7 @@
           if (pokemon.value) renderStatsChart();
         });
 
-        return { generations, selectedGen, species, selectedPokemon, speciesOpen, loading, error, pokemon, search, loadSpecies, toggleSpeciesList, chooseSpecies, primarySprite, types, abilities, stats, cries, spriteVariants, typeStyle, statsCanvas, speciesDetails, evoLoading, evoError, evoPaths, encountersLoading, encountersError, encounters, prettify, englishGenus, captureRateApprox };
+        return { generations, selectedGen, species, selectedPokemon, speciesOpen, loading, error, pokemon, search, loadSpecies, toggleSpeciesList, chooseSpecies, primarySprite, types, abilities, stats, cries, spriteVariants, typeStyle, statsCanvas, speciesDetails, evoLoading, evoError, evoPaths, encountersLoading, encountersError, encounters, prettify, englishGenus, captureRateApprox, openFromEvolution };
       }
     }).mount('#app');
   </script>
